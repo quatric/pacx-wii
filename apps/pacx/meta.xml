@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="1">
+  <name>Pac the Man X</name>
+  <coder>quatric</coder>
+  <version>1.5.1a-wii1</version>
+  <release_date>20261020000000</release_date>
+  <short_description>Maze game with a level editor</short_description>
+  <long_description>A port of the freeware Mac game Pac the Man X 1.5.1a by McSebi Software, with its level editor.
+
+Clear each maze of dots while the Glooms hunt you. Play alone or with a friend, on four difficulty levels, on the 25 standard levels or your own.
+
+Controls: Wii Remote held sideways, Nunchuk, Classic Controller, GameCube controller or USB keyboard. Player 1 uses port 1 and the arrow keys, player 2 port 2 and W A S D. + pauses, HOME on the title opens the preferences and the level editor.</long_description>
+</app>

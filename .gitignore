@@ -1,0 +1,14 @@
+# built
+/build/
+/build-test/
+/.dolxz/
+*.elf
+*.dol
+*.map
+__pycache__/
+
+# made from your copy of the game by tools/convert_assets.py
+/data/pack.bin
+/apps/pacx/music/
+/apps/pacx/levels/
+/apps/pacx/boot.dol
