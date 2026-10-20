@@ -11,8 +11,6 @@ writes
   apps/pacx/levels/        the extra level set, editable with the built-in editor
 
 Nothing from the game is stored in this repository; run this once before `make`.
-The player and enemy sprites are not taken from the game: they are drawn by
-tools/original_sprites.py.
 """
 import os
 import re
@@ -25,7 +23,6 @@ import wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from PIL import Image  # noqa: E402
-import original_sprites as orig  # noqa: E402
 
 ROOT = os.path.dirname(HERE)
 
@@ -128,56 +125,6 @@ class Pack:
             f.write(body + blobs)
 
 
-# ------------------------------------------------------------------------------ patches
-
-def patch_title(title):
-    """The title picture has three dim icons under the first three buttons that show the
-    original characters; replace them with dim versions of the new button art."""
-    img = title.copy()
-    px = img.load()
-    buttons = [(103, 374), (174, 384), (254, 389)]
-    for k, (bx, by) in enumerate(buttons):
-        # the third icon (both players) is wider than its socket
-        cx, cy, r = bx + 24, by + 67, 18 if k < 2 else 23
-        # rebuild the background inside the circle from the rows just above and below it
-        for x in range(cx - r, cx + r + 1):
-            top = px[x, cy - r - 1]
-            bot = px[x, min(cy + r + 1, img.height - 1)]
-            for y in range(cy - r, cy + r + 1):
-                if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
-                    t = (y - (cy - r - 1)) / float(2 * r + 2)
-                    px[x, y] = tuple(int(top[i] * (1 - t) + bot[i] * t) for i in range(3)) + (255,)
-        icon = orig.button_icon(k).resize((34, 34), Image.LANCZOS)
-        a = icon.split()[3].point(lambda v: int(v * 0.28))
-        icon.putalpha(a)
-        img.alpha_composite(icon, (cx - 17, cy - 17))
-    return img
-
-
-def patch_ending(ending):
-    """The ending picture shows the original cast in one row; draw the new cast there."""
-    img = ending.copy()
-    px = img.load()
-    x0, y0, x1, y1 = 176, 182, 466, 242
-    samples = [px[x, y0 - 2] for x in range(x0, x1, 7)] + [px[x, y1 + 2] for x in range(x0, x1, 7)]
-    samples.sort(key=lambda c: sum(c[:3]))
-    bg = samples[len(samples) // 2]
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            px[x, y] = bg
-    row = orig.ending_row()
-    img.alpha_composite(row, (320 - row.width // 2, 188))
-    return img
-
-
-def patch_buttons(buttons):
-    img = buttons.copy()
-    for k in range(3):
-        img.paste(Image.new("RGBA", (48, 48), (0, 0, 0, 0)), (k * 48, 0))
-        img.alpha_composite(orig.button_icon(k), (k * 48, 0))
-    return img
-
-
 # ------------------------------------------------------------------------------ text
 
 def read_strings(path):
@@ -196,12 +143,19 @@ def read_strings(path):
     return out
 
 
-# the help lines that name the original characters get neutral wording
-HELP_NAMES = {
-    "en": ("This is you - Player 1", "This is your friend - Player 2"),
-    "de": ("Das bist du - Spieler 1", "Dein Freund - Spieler 2"),
-    "fr": ("C'est toi - Joueur 1", "Ton ami - Joueur 2"),
-}
+# ------------------------------------------------------------------------------ icon
+
+LOGO_BOX = (88, 45, 552, 200)  # "PAC THE MAN" in the title picture
+
+
+def app_icon(res):
+    """128x48 Homebrew Channel icon: the game's own icon beside the title logo."""
+    title = load_raw(os.path.join(res, "Sprites", "title.raw")).convert("RGB")
+    icon = Image.new("RGBA", (128, 48), (0, 0, 0, 255))
+    logo = title.crop(LOGO_BOX)
+    logo.thumbnail((128, 48), Image.LANCZOS)
+    icon.paste(logo, ((128 - logo.width) // 2, (48 - logo.height) // 2))
+    return icon
 
 
 # ------------------------------------------------------------------------------ main
@@ -222,24 +176,14 @@ def main():
     from_game = ["arrow", "pellet", "barrier", "game_over", "heart", "ready", "pause", "spot",
                  "help", "the_end", "highscore_title", "extra", "super_pellet", "die_part2", "pop",
                  "tile", "tile2", "points", "font", "font_small",
-                 "citadel1", "citadel2", "citadel3", "citadel4"]
+                 "citadel1", "citadel2", "citadel3", "citadel4",
+                 "title", "ending", "buttons",
+                 "player1", "player1_flash", "player2", "player2_flash", "die_part1",
+                 "ghost", "ghost_run"]
     for name in from_game:
         img = load_raw(os.path.join(spr, name + ".raw"))
         pack.tex(name, img, FMT_RGB565 if name in opaque else FMT_RGBA8)
         print("sprite", name, img.size)
-
-    pack.tex("title", patch_title(load_raw(os.path.join(spr, "title.raw"))), FMT_RGB565)
-    pack.tex("ending", patch_ending(load_raw(os.path.join(spr, "ending.raw"))), FMT_RGB565)
-    pack.tex("buttons", patch_buttons(load_raw(os.path.join(spr, "buttons.raw"))))
-
-    pack.tex("player1", orig.player_sheet(1))
-    pack.tex("player1_flash", orig.player_sheet(1, True))
-    pack.tex("player2", orig.player_sheet(2))
-    pack.tex("player2_flash", orig.player_sheet(2, True))
-    pack.tex("die_part1", orig.death_sheet())
-    pack.tex("ghost", orig.enemy_sheet())
-    pack.tex("ghost_run", orig.scared_sheet())
-    print("original character sheets drawn")
 
     bgdir = os.path.join(res, "Backgrounds")
     for f in sorted(os.listdir(bgdir)):
@@ -248,12 +192,12 @@ def main():
             pack.tex("bg/" + os.path.splitext(f)[0], img, FMT_RGB565)
             print("background", f, img.size)
 
-    # editor tool icons (the citadel tool and the start-position tools use the new art)
-    for f in ("erasure", "pathway", "pellet"):
+    # editor tool icons
+    for f, name in (("erasure", "ed_erasure"), ("pathway", "ed_pathway"), ("pellet", "ed_pellet"),
+                    ("player1", "ed_player1"), ("player2", "ed_player2"), ("citadel_small", "ed_citadel")):
         p = os.path.join(editor, f + ".png")
         if os.path.exists(p):
-            pack.tex("ed_" + f, Image.open(p).convert("RGBA"))
-    pack.tex("ed_citadel", orig.finish(orig.draw_gloom(orig.ENEMY_COLORS[1], (0, 1), 0), 32, 32))
+            pack.tex(name, Image.open(p).convert("RGBA"))
 
     sdir = os.path.join(res, "Sounds")
     for f in sorted(os.listdir(sdir)):
@@ -283,7 +227,6 @@ def main():
         if not os.path.exists(p):
             continue
         s = read_strings(p)
-        s["Help1"], s["Help2"] = HELP_NAMES[lang]
         txt = "".join(f"{k}={v}\n" for k, v in sorted(s.items()))
         pack.data("strings/" + lang, txt.encode("utf-8"))
 
@@ -295,7 +238,7 @@ def main():
     app = os.path.join(ROOT, "apps", "pacx")
     os.makedirs(os.path.join(app, "music"), exist_ok=True)
     os.makedirs(os.path.join(app, "levels"), exist_ok=True)
-    orig.app_icon().save(os.path.join(app, "icon.png"))
+    app_icon(res).save(os.path.join(app, "icon.png"))
     if os.path.exists(xlev):
         shutil.copyfile(xlev, os.path.join(app, "levels", "The X Levels.plist"))
 

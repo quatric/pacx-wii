@@ -166,7 +166,7 @@ static int test_script(int frame) {
     case 1380: shot(8); break;                                  /* editor */
     case 1385: editor_test(); break;
     case 1395: shot(10); break;                                 /* edited level */
-    case 1400: ui_text_entry("Congratulations Player 1! You reached the Top 10.", "BIBS", 19, name_test_done); break;
+    case 1400: ui_text_entry("Congratulations Player 1! You reached the Top 10.", "PACMAN", 19, name_test_done); break;
     case 1460: shot(9); break;                                  /* keyboard */
     case 1470: eng_post(EV_NEW_GAME2, 0, 0); break;
     case 1520: return 1;

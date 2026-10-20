@@ -5,8 +5,7 @@ Nintendo Wii (Homebrew Channel), together with its level editor.
 
 The game logic is rebuilt from the original program, so it plays the same as the original:
 the same mazes, speeds, timers, scores, bonus items, demo mode, high score tables and
-screens. The two players and their enemies are drawn with new art: the players are
-*Bibs* and the enemies are *Glooms*.
+screens, with the original graphics, sounds and music.
 
 ## What you need
 

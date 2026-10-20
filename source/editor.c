@@ -916,10 +916,10 @@ static void draw_level(void) {
 }
 
 static void draw_icon(int t, float x, float y) {
-    const char *names[T_COUNT] = {"ed_pathway", "ed_erasure", "ed_pellet", "player1", "player2", "ed_citadel"};
-    int idx = t == T_PLAYER1 ? 11 : t == T_PLAYER2 ? 4 : 0;
+    const char *names[T_COUNT] = {"ed_pathway", "ed_erasure", "ed_pellet", "ed_player1", "ed_player2", "ed_citadel"};
     FrameSet *fs = fs_find(names[t]);
     if (!fs) fs = fs_whole(names[t]);
+    int idx = 0;
     if (!fs || idx >= fs->count) return;
     const Frame *f = &fs->frames[idx];
     float s = 30.0f / (f->w > f->h ? f->w : f->h);
