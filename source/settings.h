@@ -1,7 +1,8 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
-/* NSUserDefaults of the original, kept in <app folder>/settings.txt */
+/* NSUserDefaults of the original, kept in <app folder>/settings.txt: sd:/apps/pacx on the Wii,
+   ~/Library/Application Support/Pac the Man X on the Mac */
 typedef struct {
     int difficulty;         /* Difficulty 1 easy .. 4 master */
     float musicVol, soundVol;
@@ -12,7 +13,7 @@ typedef struct {
 } Settings;
 
 extern Settings cfg;
-extern char appDir[256];    /* sd:/apps/pacx (where boot.dol is) */
+extern char appDir[256];    /* sd:/apps/pacx (where boot.dol is), or the Mac's Application Support folder */
 extern int storageOk;
 
 void storage_init(const char *argv0);
@@ -38,6 +39,9 @@ void hs_clear_all(void);
 
 /* Localizable.strings */
 void strings_init(void);
+#ifdef PACX_MAC
+const char *platform_language(void);    /* "en", "de" or "fr", from the system's languages */
+#endif
 const char *tr(const char *key);
 
 char *file_read(const char *path, int *len);

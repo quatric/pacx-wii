@@ -1,13 +1,20 @@
 #ifndef GFX_H
 #define GFX_H
+#include "platform.h"
+#ifndef PACX_MAC
 #include <gccore.h>
+#endif
 
 /* The game draws into a 640x480 view, y down, like the original glOrtho(0, 640, 480, 0). */
 #define VIEW_W 640
 #define VIEW_H 480
 
 typedef struct Tex {
+#ifdef PACX_MAC
+    void *obj;      /* the Metal texture (retained) */
+#else
     GXTexObj obj;
+#endif
     int w, h;       /* picture size */
     int pw, ph;     /* texture size (padded to 4) */
     int fmt;
@@ -26,7 +33,9 @@ Tex *gfx_tex_rgba(const u8 *rgba, int w, int h);   /* a texture from linear RGBA
 void gfx_tex_free(Tex *t);
 
 void gfx_restore_state(void);      /* our GX state again, after another library drew */
+#ifndef PACX_MAC
 GXRModeObj *gfx_rmode(void);
+#endif
 
 void gfx_begin(void);
 void gfx_end(void);

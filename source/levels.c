@@ -157,3 +157,47 @@ int citadel_number(const char *name) {
     if (!strcmp(name, "citadel4")) return 4;
     return 1;
 }
+
+/* the 11x11 tile parts of one maze cell, in the order buildLevel creates them */
+void maze_cell_parts(int t, void (*emit)(void *u, int frame, int xo, int yo), void *u) {
+    if (t == 0) {
+        for (int xo = 0; xo < 4; xo++)
+            for (int yo = 0; yo < 4; yo++) emit(u, 14, xo, yo);
+        return;
+    }
+    int L = t & 1, R = t & 2, U = t & 4, D = t & 8;
+    if (L) {
+        emit(u, U ? 13 : 1, 0, 0);
+        emit(u, D ? 10 : 7, 0, 3);
+    } else {
+        emit(u, 3, 0, 1);
+        emit(u, 3, 0, 2);
+        if (!U) emit(u, 0, 0, 0);
+        if (!D) emit(u, 6, 0, 3);
+    }
+    if (R) {
+        emit(u, U ? 12 : 1, 3, 0);
+        emit(u, D ? 9 : 7, 3, 3);
+    } else {
+        emit(u, 5, 3, 1);
+        emit(u, 5, 3, 2);
+        if (!U) emit(u, 2, 3, 0);
+        if (!D) emit(u, 8, 3, 3);
+    }
+    if (!U) {
+        emit(u, 1, 1, 0);
+        emit(u, 1, 2, 0);
+    }
+    if (!D) {
+        emit(u, 7, 1, 3);
+        emit(u, 7, 2, 3);
+    }
+    if (U) {
+        if (!L) emit(u, 3, 0, 0);
+        if (!R) emit(u, 5, 3, 0);
+    }
+    if (D) {
+        if (!L) emit(u, 3, 0, 3);
+        if (!R) emit(u, 5, 3, 3);
+    }
+}

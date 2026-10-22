@@ -1,8 +1,9 @@
 #ifndef PACK_H
 #define PACK_H
-#include <gctypes.h>
+#include "platform.h"
 
-/* data/pack.bin, written by tools/convert_assets.py */
+/* data/pack.bin, written by tools/convert_assets.py: linked into the Wii program, a file
+   in the Resources of the Mac application (little-endian, with untiled RGBA pictures) */
 enum { PK_TEX = 1, PK_SND = 2, PK_DATA = 3 };
 enum { PK_RGBA8 = 0, PK_RGB565 = 1 };
 
@@ -14,6 +15,9 @@ typedef struct {
     u16 pad2;
 } __attribute__((packed)) PackEntry;
 
+#ifdef PACX_MAC
+int pack_open(const char *path);
+#endif
 void pack_init(void);
 const PackEntry *pack_find(const char *name);
 const void *pack_data(const PackEntry *e);

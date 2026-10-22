@@ -1,6 +1,6 @@
 #ifndef INPUT_H
 #define INPUT_H
-#include <gctypes.h>
+#include "platform.h"
 
 /* the original's keys: Left1..Down1 (arrows), Left2..Down2 (A S D W), Return (join),
    Space (pause) and Esc (cancel) */

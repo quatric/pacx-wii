@@ -82,6 +82,5 @@ void game_enter_new_score(int player);
 /* the editor: plays one of its levels, then game_take_editor_return() says to go back to it */
 void game_try_editor_level(const LevelSet *set, int level, int players);
 int  game_take_editor_return(void);
-void maze_cell_parts(int t, void (*emit)(void *u, int frame, int xo, int yo), void *u);
 
 #endif

@@ -12,3 +12,5 @@ __pycache__/
 /apps/pacx/music/
 /apps/pacx/levels/
 /apps/pacx/boot.dol
+/mac/data/
+/build-mac/

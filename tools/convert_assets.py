@@ -3,12 +3,19 @@
 Builds the Wii data from your own copy of Pac the Man X 1.5.x.
 
 usage: python3 -I tools/convert_assets.py "<path>/Pac the Man X.app/Contents/Resources"
+       python3 -I tools/convert_assets.py --mac "<path>/Pac the Man X.app/Contents/Resources"
 
-writes
+writes, for the Wii
   data/pack.bin            textures (GX tiled), sounds, level sets and strings, linked into the .dol
   apps/pacx/music/*.ogg    the soundtrack, streamed from the SD card
   apps/pacx/icon.png       Homebrew Channel icon
   apps/pacx/levels/        the extra level set, editable with the built-in editor
+
+and with --mac, for the Mac build (mac/Makefile)
+  mac/data/pack.bin        the same pack, little-endian, with untiled RGBA pictures
+  mac/data/music/          the soundtrack (the ending converted to .m4a)
+  mac/data/levels/         the extra level set
+  mac/data/*.icns, *.png   the icons of the game and of the editor
 
 Nothing from the game is stored in this repository; run this once before `make`.
 """
@@ -92,22 +99,31 @@ def tile_rgb565(img):
 # ------------------------------------------------------------------------------ pack
 
 class Pack:
-    def __init__(self):
+    """mac: little-endian, pictures as plain RGBA rows, sounds as little-endian samples"""
+
+    def __init__(self, mac=False):
         self.entries = []
+        self.mac = mac
+        self.end = "<" if mac else ">"
 
     def tex(self, name, img, fmt=FMT_RGBA8):
         w, h = img.size
-        data, pw, ph = tile_rgba8(img) if fmt == FMT_RGBA8 else tile_rgb565(img)
+        if self.mac:
+            fmt, data, pw, ph = FMT_RGBA8, img.convert("RGBA").tobytes(), w, h
+        else:
+            data, pw, ph = tile_rgba8(img) if fmt == FMT_RGBA8 else tile_rgb565(img)
         self.entries.append((name, T_TEX, fmt, w, h, pw, ph, 0, data))
 
-    def snd(self, name, pcm_be, rate):
-        self.entries.append((name, T_SND, 0, 0, 0, 0, 0, rate, pcm_be))
+    def snd(self, name, samples, rate):
+        pcm = struct.pack(self.end + "%dh" % len(samples), *samples)
+        pcm += b"\0" * (((len(pcm) + 31) & ~31) - len(pcm))
+        self.entries.append((name, T_SND, 0, 0, 0, 0, 0, rate, pcm))
 
     def data(self, name, b):
         self.entries.append((name, T_DATA, 0, 0, 0, 0, 0, 0, b))
 
     def write(self, path):
-        head = struct.pack(">4sIII", b"PXPK", len(self.entries), 0, 0)
+        head = struct.pack(self.end + "4sIII", b"PXPK", len(self.entries), 0, 0)
         table_size = len(self.entries) * 64
         off = (len(head) + table_size + 31) & ~31
         table = b""
@@ -116,7 +132,7 @@ class Pack:
             nb = name.encode("utf-8")
             assert len(nb) < 40, name
             pos = off + len(blobs)
-            table += struct.pack(">40sBBHHHHHHII2x", nb, typ, fmt, w, h, pw, ph, rate, 0, pos, len(data))
+            table += struct.pack(self.end + "40sBBHHHHHHII2x", nb, typ, fmt, w, h, pw, ph, rate, 0, pos, len(data))
             blobs += data
             blobs += b"\0" * (((len(blobs) + 31) & ~31) - len(blobs))
         body = head + table
@@ -161,16 +177,19 @@ def app_icon(res):
 # ------------------------------------------------------------------------------ main
 
 def main():
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    mac = "--mac" in args
+    args = [a for a in args if a != "--mac"]
+    if len(args) < 1:
         print(__doc__)
         sys.exit(2)
-    res = os.path.abspath(sys.argv[1])
+    res = os.path.abspath(args[0])
     spr = os.path.join(res, "Sprites")
     if not os.path.isdir(spr):
         sys.exit(f"no Sprites folder in {res}")
     editor = os.path.join(res, "Pac the Man X Editor.app", "Contents", "Resources")
 
-    pack = Pack()
+    pack = Pack(mac)
 
     opaque = {"title", "ending", "highscore_title"}
     from_game = ["arrow", "pellet", "barrier", "game_over", "heart", "ready", "pause", "spot",
@@ -211,9 +230,7 @@ def main():
         samples = struct.unpack("<%dh" % (len(frames) // 2), frames)
         if ch == 2:
             samples = [(samples[i] + samples[i + 1]) // 2 for i in range(0, len(samples), 2)]
-        pcm = struct.pack(">%dh" % len(samples), *samples)
-        pcm += b"\0" * (((len(pcm) + 31) & ~31) - len(pcm))
-        pack.snd("snd/" + os.path.splitext(f)[0], pcm, rate)
+        pack.snd("snd/" + os.path.splitext(f)[0], samples, rate)
         print("sound", f, rate)
 
     std = os.path.join(editor, "Levels.plist")
@@ -229,6 +246,10 @@ def main():
         s = read_strings(p)
         txt = "".join(f"{k}={v}\n" for k, v in sorted(s.items()))
         pack.data("strings/" + lang, txt.encode("utf-8"))
+
+    if mac:
+        mac_files(res, editor, xlev, pack)
+        return
 
     os.makedirs(os.path.join(ROOT, "data"), exist_ok=True)
     out = os.path.join(ROOT, "data", "pack.bin")
@@ -256,6 +277,34 @@ def main():
             continue
         subprocess.run([ffmpeg, "-loglevel", "error", "-y", "-i", os.path.join(mdir, f), "-vn",
                         "-ac", "2", "-ar", "32000", "-c:a", "libvorbis", "-q:a", "3", dst], check=True)
+        print("music", base)
+
+
+def mac_files(res, editor, xlev, pack):
+    out = os.path.join(ROOT, "mac", "data")
+    for d in ("", "music", "levels"):
+        os.makedirs(os.path.join(out, d), exist_ok=True)
+    pack.write(os.path.join(out, "pack.bin"))
+    print("wrote", os.path.join(out, "pack.bin"), os.path.getsize(os.path.join(out, "pack.bin")), "bytes")
+    if os.path.exists(xlev):
+        shutil.copyfile(xlev, os.path.join(out, "levels", "The X Levels.plist"))
+    # the icon of the game, of the editor, and the players' icons of the name panel
+    for src in (os.path.join(res, "pacman.icns"), os.path.join(editor, "ptm.icns"),
+                os.path.join(res, "player1icon.png"), os.path.join(res, "player2icon.png")):
+        if os.path.exists(src):
+            shutil.copyfile(src, os.path.join(out, os.path.basename(src)))
+    mdir = os.path.join(res, "Music")
+    for f in sorted(os.listdir(mdir)):
+        base, ext = os.path.splitext(f)
+        src = os.path.join(mdir, f)
+        if ext.lower() in (".mp3", ".m4a"):
+            shutil.copyfile(src, os.path.join(out, "music", f))
+        elif ext.lower() == ".mov":
+            dst = os.path.join(out, "music", base + ".m4a")
+            if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
+                subprocess.run(["afconvert", "-f", "m4af", "-d", "aac", src, dst], check=True)
+        else:
+            continue
         print("music", base)
 
 

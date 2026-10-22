@@ -1,18 +1,24 @@
+#ifndef PACX_MAC
 #include <gccore.h>
 #include <fat.h>
+#include <ogc/conf.h>
+#endif
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
-#include <ogc/conf.h>
 #include "settings.h"
 #include "pack.h"
 #include "gfx.h"
 
 Settings cfg;
+#ifdef PACX_MAC
+char appDir[256];
+#else
 char appDir[256] = "sd:/apps/pacx";
+#endif
 int storageOk;
 
 char *file_read(const char *path, int *len) {
@@ -43,12 +49,25 @@ int file_write(const char *path, const void *data, int len) {
 }
 
 void storage_init(const char *argv0) {
+#ifdef PACX_MAC
+    /* ~/Library/Application Support/Pac the Man X, shared by the game and the editor */
+    (void)argv0;
+    const char *home = getenv("HOME");
+    snprintf(appDir, sizeof appDir, "%s/Library/Application Support/Pac the Man X", home ? home : "/tmp");
+    for (char *s = strchr(appDir + 1, '/'); s; s = strchr(s + 1, '/')) {
+        *s = 0;
+        mkdir(appDir, 0755);
+        *s = '/';
+    }
+    storageOk = 1;
+#else
     storageOk = fatInitDefault();
     if (argv0 && strchr(argv0, ':')) {
         strncpy(appDir, argv0, sizeof appDir - 1);
         char *slash = strrchr(appDir, '/');
         if (slash) *slash = 0;
     }
+#endif
     if (storageOk) {
         mkdir(appDir, 0777);
         char p[300];
@@ -277,10 +296,14 @@ static void load_lang(const char *lang) {
 }
 
 void strings_init(void) {
+#ifdef PACX_MAC
+    const char *lang = platform_language();
+#else
     int l = CONF_GetLanguage();
     const char *lang = "en";
     if (l == CONF_LANG_GERMAN) lang = "de";
     else if (l == CONF_LANG_FRENCH) lang = "fr";
+#endif
     load_lang(lang);
     if (!nstr) load_lang("en");
 }

@@ -1,13 +1,16 @@
-# Pac the Man X for the Wii
+# Pac the Man X for the Wii and the Mac
 
 A port of **Pac the Man X 1.5.1a**, the freeware Mac maze game by McSebi Software, to the
-Nintendo Wii (Homebrew Channel), together with its level editor.
+Nintendo Wii (Homebrew Channel), together with its level editor, and from there back to
+today's Macs (Apple silicon and Intel, macOS 11 or newer) with a native level editor.
 
 The game logic is rebuilt from the original program, so it plays the same as the original:
 the same mazes, speeds, timers, scores, bonus items, demo mode, high score tables and
-screens, with the original graphics, sounds and music.
+screens, with the original graphics, sounds and music. The Wii and the Mac share that code;
+only the drawing, sound, input and windows are their own (`source/` for the Wii, `mac/` for
+the Mac).
 
-## What you need
+## What you need for the Wii
 
 This repository holds no game data. The pictures, sounds, music and levels are converted
 from your own copy of the game, which you can still download as freeware.
@@ -17,7 +20,7 @@ from your own copy of the game, which you can still download as freeware.
 - Python 3 with Pillow
 - Pac the Man X 1.5.1a for the Mac (`Pac the Man X.app`)
 
-## Building
+## Building for the Wii
 
 ```bash
 git clone --recursive https://github.com/quatric/pacx-wii.git
@@ -31,7 +34,7 @@ with the music, the icon and the extra level file. `make dist` builds the progra
 with dolxz, and puts it in `apps/pacx/boot.dol`. Copy the `apps/pacx` folder to `apps/` on
 your SD card. `make NO_DOLXZ=1` skips the compression.
 
-## Controls
+## Controls on the Wii
 
 | | Player 1 | Player 2 |
 |---|---|---|
@@ -53,7 +56,7 @@ Difficulty, music and sound volume, and the level file to play. The screen setti
 between automatic 16:9 pillarboxing, 4:3, and a stretched picture. You can also try a single
 level, open the level editor, clear the high scores, or quit.
 
-## Level editor
+## Level editor on the Wii
 
 The editor works like the Mac *Pac the Man X Editor* and edits the maze right where the
 game draws it. Point with the Wii Remote (or a USB mouse) and use the tools in the top bar:
@@ -79,6 +82,64 @@ Hold B (or Z, or Shift) to bypass the editor's checks, as the modifier key did o
 Level files are stored in `apps/pacx/levels` and use the same `.plist` format as the Mac
 editor, so files can move between the two. The standard levels are read-only; editing them
 saves a new file.
+
+## The Mac version
+
+### Building
+
+You need the Xcode command line tools and Python 3 with Pillow.
+
+```bash
+python3 -I tools/convert_assets.py --mac "/path/to/Pac the Man X.app/Contents/Resources"
+make -C mac
+```
+
+The converter writes `mac/data` (the pack, the music, the extra levels and the icons of the
+game and of the editor from your copy) and `make -C mac` builds `build-mac/Pac the Man X.app`,
+with `Pac the Man X Editor.app` inside its Resources folder, as in the original.
+`make -C mac dist` also zips it. The application is signed ad hoc, so the first time you
+open a copy downloaded from elsewhere, open it with a right-click and *Open*.
+
+### Playing
+
+The game runs in a window you can resize or make full screen (⌘F); the picture keeps its
+proportions unless you choose to stretch it in the preferences. The menus are those of the
+original: new games (⌘1, ⌘2, ⌘N), pause and resume (⌘P, ⌘R), try level (⌘T), the level
+editor (⌘L), the high scores (⌘S) and the preferences (⌘,), where you choose the
+difficulty, the volumes, the level file and the keys of both players.
+
+| | Player 1 | Player 2 |
+|---|---|---|
+| Keyboard (set in the preferences) | arrow keys | A S D W |
+| Game controller | first controller | second controller |
+
+Return joins a game, Space pauses and Esc goes back to the title. On a game controller,
+any face button joins, Menu pauses and Options goes back. The settings, high scores and
+level files are kept in `~/Library/Application Support/Pac the Man X`; *Open custom levels
+folder in Finder* in the Game menu shows the level files.
+
+### Level editor
+
+*Pac the Man X Editor* is a native Mac application, like the original by Stone Design, and
+draws the levels with the game's own pictures. Open it from the Game menu (⌘L).
+
+- The tools above the maze (⌘1 to ⌘6): **Path** (drag along a row or a column; drag off the
+  edge for a path that wraps around), **Erase**, **Super Pellet** (up to 10), **Player 1**,
+  **Player 2** and **Citadel**. Hold Shift or Option to bypass the editor's checks.
+- The sidebar chooses the level file and the level, adds, removes, duplicates and reorders
+  levels, and sets the maze colour, the tiles, the citadel, the background and the wait time.
+- **Launch Pac the Man X** (⌘L) plays the current level in the game, with Pac-Man, Ms.
+  Pac-Man or both; Esc in the game brings you back to the editor.
+- Undo and redo, copy and paste of whole levels, and the File menu to create, open, save
+  and remove level files. The standard levels are read-only; saving them asks for a new file.
+
+The level files are the same `.plist` files as those of the Mac and Wii editors.
+
+### Testing
+
+`PACX_TEST_SHOTS=<folder> "build-mac/Pac the Man X.app/Contents/MacOS/Pac the Man X"`
+walks through the screens like the Wii test build, saves PNG pictures of them in the folder
+and quits.
 
 ## Testing in Dolphin
 

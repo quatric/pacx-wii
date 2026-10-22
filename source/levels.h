@@ -37,4 +37,8 @@ void levels_remove(LevelSet *set, int at);
 
 int citadel_number(const char *name);   /* citadel -> 1, citadel2..4 -> 2..4 */
 
+/* the 11x11 tile parts (frame, column and row within the 44x44 cell) that draw a maze cell
+   with open sides t, in the order the game's buildLevel creates them */
+void maze_cell_parts(int t, void (*emit)(void *u, int frame, int xo, int yo), void *u);
+
 #endif

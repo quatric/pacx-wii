@@ -1,8 +1,6 @@
 /*
- * The level editor. Each level is a 13x10 grid of letters, 'A' + the open sides (1 left,
- * 2 right, 4 up, 8 down); Q and R make up the citadel, R being its entry. The editing rules
- * (updatePaths:erasing:, moveCitadel, togglePellet, setPlayer) follow the Mac editor, including
- * its quirks; only reads outside the grid, which raised exceptions there, are guarded.
+ * The Wii level editor: the maze is edited where the game draws it, with the pointer. The
+ * editing rules of the Mac editor are in edit_rules.c.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +16,7 @@
 #include "audio.h"
 #include "settings.h"
 #include "levels.h"
+#include "edit_rules.h"
 #include "pack.h"
 
 /* the maze view of the editor (572x440) sits where the game draws the maze */
@@ -74,234 +73,45 @@ static void do_undo(void) {
     dirty = 1;
 }
 
-/* ================================================================== tiles */
-
-static int bits_of(char letter) {
-    int t = letter - 'A';
-    return (t >= 0 && t <= 15) ? t : 0;
-}
-
-static char letter_for(int top, int bottom, int left, int right) {
-    return 'A' + (left ? 1 : 0) + (right ? 2 : 0) + (top ? 4 : 0) + (bottom ? 8 : 0);
-}
-
-static char tile(int c, int r) {
-    if (c < 0 || c >= LV_W || r < 0 || r >= LV_H) return 'A';
-    return lv()->tiles[r][c];
-}
-
-static int top_open(int c, int r) { return (bits_of(tile(c, r)) & 4) != 0; }
-static int bottom_open(int c, int r) { return (bits_of(tile(c, r)) & 8) != 0; }
-static int left_open(int c, int r) { return (bits_of(tile(c, r)) & 1) != 0; }
-static int right_open(int c, int r) { return (bits_of(tile(c, r)) & 2) != 0; }
-
-static void put(int c, int r, char t) {
-    if (c < 0 || c >= LV_W || r < 0 || r >= LV_H) return;
-    lv()->tiles[r][c] = t;
-}
-
-/* setTileAtColumn:row:toLetter: the citadel cannot be painted over */
-static void set_tile(int c, int r, char t) {
-    char o = tile(c, r);
-    if (o == 'Q' || o == 'R') return;
-    put(c, r, t);
-}
+/* ================================================================== the rules (edit_rules.c) */
 
 static int modifier(void) { return in_shift(); }
 
-/* validateNextColumn:row: a path may not lead into the citadel */
-static int validate(int c, int r) {
-    if (modifier()) return 1;
-    if (c < 0 || c >= LV_W || r < 0 || r >= LV_H) return 1;
-    return tile(c, r) != 'Q';
-}
-
-/* canPlaceItemAtColumn:row: */
-static int can_place(int c, int r) {
-    if (modifier()) return 1;
-    char t = tile(c, r);
-    return !(t == 'A' || t == 'Q' || t == 'R' || t == 'S');
-}
-
-/* ================================================================== updatePaths:erasing: */
+static int can_place(int c, int r) { return ed_can_place(lv(), c, r, modifier()); }
 
 static void update_paths(int erasing) {
-    int minC = startCol < endCol ? startCol : endCol, maxC = startCol < endCol ? endCol : startCol;
-    int minR = startRow < endRow ? startRow : endRow, maxR = startRow < endRow ? endRow : startRow;
-    int mod = modifier();
+    EdDrag d = {startCol, startRow, endCol, endRow, vertical, pokeHole};
     prepare();
-    if (vertical && erasing) {
-        int c = minC;
-        for (int r = minR; r <= maxR; r++) {
-            char t = tile(c, r);
-            int T = bits_of(t);
-            if (!mod) {
-                /* the path that wrapped around the screen goes as well */
-                if (r == 9) {
-                    if (T & 8) set_tile(c, 0, letter_for(0, bottom_open(c, 0), left_open(c, 0), right_open(c, 0)));
-                } else if (r == 0) {
-                    if (T & 4) set_tile(c, 9, letter_for(top_open(c, 9), 0, left_open(c, 9), right_open(c, 9)));
-                }
-            }
-            set_tile(c, r, 'A');
-            if ((T & 1) && c > 0)
-                set_tile(c - 1, r, letter_for(top_open(c - 1, r), bottom_open(c - 1, r), left_open(c - 1, r), 0));
-            if ((T & 2) && c <= 11)
-                set_tile(c + 1, r, letter_for(top_open(c + 1, r), bottom_open(c + 1, r), 0, right_open(c + 1, r)));
-            /* the original tests the first row of the range here, not r */
-            if ((T & 4) && minR > 0)
-                set_tile(c, r - 1, letter_for(top_open(c, r - 1), 0, left_open(c, r - 1), right_open(c, r - 1)));
-            if ((T & 8) && minR <= 8)
-                set_tile(c, r + 1, letter_for(0, bottom_open(c, r + 1), left_open(c, r + 1), right_open(c, r + 1)));
-        }
-    } else if (vertical) {
-        int c = minC;
-        for (int r = minR; r <= maxR; r++) {
-            int top = r > minR ? 1 : top_open(c, r);
-            int bottom = r < maxR ? 1 : bottom_open(c, r);
-            int vt = top ? validate(c, r - 1) : 0;
-            if (pokeHole && r == 0) vt = 1;
-            int vb = bottom ? validate(c, r + 1) : 0;
-            if (pokeHole && r == 9) vb = 1;
-            set_tile(c, r, letter_for(vt, vb, left_open(c, r), right_open(c, r)));
-            if (pokeHole && r == 0)
-                set_tile(c, 9, letter_for(top_open(c, 9), 1, left_open(c, 9), right_open(c, 9)));
-            if (pokeHole && r == 9)
-                set_tile(c, 0, letter_for(1, bottom_open(c, 0), left_open(c, 0), right_open(c, 0)));
-        }
-    } else if (erasing) {
-        int r = minR;
-        for (int c = minC; c <= maxC; c++) {
-            char t = tile(c, r);
-            int T = bits_of(t);
-            set_tile(c, r, 'A');
-            if (!mod) {
-                if (c == 12) {
-                    if (T & 2) set_tile(0, r, letter_for(top_open(0, r), bottom_open(0, r), 0, right_open(0, r)));
-                } else if (c == 0) {
-                    if (T & 1) set_tile(12, r, letter_for(top_open(12, r), bottom_open(12, r), left_open(12, r), 0));
-                }
-            }
-            /* the original tests the first column of the range here, not c */
-            if ((T & 1) && minC > 0)
-                set_tile(c - 1, r, letter_for(top_open(c - 1, r), bottom_open(c - 1, r), left_open(c - 1, r), 0));
-            if ((T & 2) && minC <= 11)
-                set_tile(c + 1, r, letter_for(top_open(c + 1, r), bottom_open(c + 1, r), 0, right_open(c + 1, r)));
-            if ((T & 4) && r > 0)
-                set_tile(c, r - 1, letter_for(top_open(c, r - 1), 0, left_open(c, r - 1), right_open(c, r - 1)));
-            if ((T & 8) && r <= 8)
-                set_tile(c, r + 1, letter_for(0, bottom_open(c, r + 1), left_open(c, r + 1), right_open(c, r + 1)));
-        }
-    } else {
-        int r = minR;
-        for (int c = minC; c <= maxC; c++) {
-            int left = c > minC ? 1 : left_open(c, r);
-            int right = c < maxC ? 1 : right_open(c, r);
-            int vl = left ? validate(c - 1, r) : 0;
-            if (pokeHole && c == 0) vl = 1;
-            int vr = right ? validate(c + 1, r) : 0;
-            if (pokeHole && c == 12) vr = 1;
-            set_tile(c, r, letter_for(top_open(c, r), bottom_open(c, r), vl, vr));
-            /* the original passes the top side of (12, r) as its left side */
-            if (pokeHole && c == 0)
-                set_tile(12, r, letter_for(top_open(12, r), bottom_open(12, r), top_open(12, r), 1));
-            if (pokeHole && c == 12)
-                set_tile(0, r, letter_for(top_open(0, r), bottom_open(0, r), 1, right_open(0, r)));
-        }
-    }
+    ed_update_paths(lv(), &d, erasing, modifier());
 }
 
-/* ================================================================== items */
-
 static void toggle_pellet(int c, int r) {
-    Level *l = lv();
-    for (int i = 0; i < l->nsp; i++)
-        if (l->sp[i][0] == c && l->sp[i][1] == r) {
-            prepare();
-            memmove(&l->sp[i], &l->sp[i + 1], sizeof l->sp[0] * (l->nsp - i - 1));
-            l->nsp--;
-            return;
-        }
-    if (!can_place(c, r)) return;
+    Level before = *lv();
+    if (!ed_toggle_pellet(lv(), c, r, modifier())) return;
+    Level after = *lv();
+    *lv() = before;
     prepare();
-    l->sp[l->nsp][0] = c;
-    l->sp[l->nsp][1] = r;
-    l->nsp++;
-    if (l->nsp > 10) {
-        memmove(&l->sp[0], &l->sp[1], sizeof l->sp[0] * (l->nsp - 1));
-        l->nsp--;
-    }
+    *lv() = after;
 }
 
 static void set_player(int nr, int c, int r) {
     if (!can_place(c, r)) return;
     prepare();
-    if (nr == 1) { lv()->p1x = c; lv()->p1y = r; }
-    else { lv()->p2x = c; lv()->p2y = r; }
-}
-
-/* the cell of the citadel entry R, as the game finds it (the last row with an R) */
-static int find_citadel(int *cc, int *rr) {
-    int found = 0;
-    for (int r = 0; r < LV_H; r++)
-        for (int c = 0; c < LV_W; c++)
-            if (tile(c, r) == 'R') {
-                *cc = c - 1;
-                *rr = r;
-                found = 1;
-                break;
-            }
-    return found;
+    ed_set_player(lv(), nr, c, r, modifier());
 }
 
 static void move_citadel(int cc, int rr) {
-    if (cc < 0) cc = 0;
-    if (cc > 10) cc = 10;
-    if (rr < 1) rr = 1;
-    if (rr > 8) rr = 8;
-    int oc, orr;
     prepare();
-    if (find_citadel(&oc, &orr)) {
-        for (int i = 0; i < 3; i++) {
-            put(oc + i, orr, 'A');
-            put(oc + i, orr + 1, 'A');
-        }
-        put(oc + 1, orr - 1, letter_for(top_open(oc + 1, orr - 1), 0, left_open(oc + 1, orr - 1), right_open(oc + 1, orr - 1)));
-    }
-    for (int i = 0; i < 3; i++) {
-        put(cc + i, rr, i == 1 ? 'R' : 'Q');
-        put(cc + i, rr + 1, 'Q');
-    }
-    put(cc + 1, rr - 1, top_open(cc + 1, rr - 1) ? 'P' : 'L');
-    if (cc > 0)
-        for (int k = 0; k < 2; k++)
-            put(cc - 1, rr + k, letter_for(top_open(cc - 1, rr + k), bottom_open(cc - 1, rr + k), left_open(cc - 1, rr + k), 0));
-    if (cc <= 9)
-        for (int k = 0; k < 2; k++)
-            put(cc + 3, rr + k, letter_for(top_open(cc + 3, rr + k), bottom_open(cc + 3, rr + k), 0, right_open(cc + 3, rr + k)));
-    put(cc, rr - 1, letter_for(top_open(cc, rr - 1), 0, left_open(cc, rr - 1), 1));
-    put(cc + 2, rr - 1, letter_for(top_open(cc + 2, rr - 1), 0, 1, right_open(cc + 2, rr - 1)));
-    if (rr <= 7)
-        for (int i = 0; i < 3; i++)
-            put(cc + i, rr + 2, letter_for(0, bottom_open(cc + i, rr + 2), left_open(cc + i, rr + 2), right_open(cc + i, rr + 2)));
+    ed_move_citadel(lv(), cc, rr);
 }
 
 /* ================================================================== levels */
-
-static void blank_level(Level *l) {
-    for (int r = 0; r < LV_H; r++) {
-        memset(l->tiles[r], 'A', LV_W);
-        l->tiles[r][LV_W] = 0;
-    }
-    l->nrows = LV_H;
-    l->nsp = 0;
-}
 
 static void new_level(void) {
     Level copy = *lv();
     Level *l = levels_insert(&set, cur + 1);
     *l = copy;
-    blank_level(l);
+    ed_blank_level(l);
     cur++;
     undoCount = 0;
     dirty = 1;
@@ -455,7 +265,7 @@ static void new_file_now(void) {
     set.n = 1;
     /* starts from the first standard level, so it can be tried at once */
     if (game.standard.n) set.lv[0] = game.standard.lv[0];
-    else blank_level(&set.lv[0]);
+    else ed_blank_level(&set.lv[0]);
     file[0] = 0;
     cur = 0;
     undoCount = 0;
@@ -687,31 +497,9 @@ static void open_menu(void) {
 #define TB_STEP 38
 #define MENU_BX 560
 
-static int cell_of(float px, float py, int *c, int *r) {
-    int cc = (int)((px - VX) / CELL), rr = (int)((py - VY) / CELL);
-    int inside = px >= VX && px < VX + LV_W * CELL && py >= VY && py < VY + LV_H * CELL;
-    if (cc < 0) cc = 0;
-    if (cc > LV_W - 1) cc = LV_W - 1;
-    if (rr < 0) rr = 0;
-    if (rr > LV_H - 1) rr = LV_H - 1;
-    *c = cc;
-    *r = rr;
-    return inside;
-}
+static int cell_of(float px, float py, int *c, int *r) { return ed_cell_at(px, py, c, r); }
 
-/* the cell the citadel goes to for a click at px, py (mouseUp: with the citadel tool) */
-static void citadel_cell(float px, float py, int *cc, int *rr) {
-    float x = px - VX - CELL, y = (py - VY) - CELL / 2;
-    if (x < 0) x = 0;
-    if (x > 439) x = 439;
-    if (y < 44) y = 44;
-    if (y > 395) y = 395;
-    *cc = (int)(x / CELL);
-    *rr = (int)(y / CELL);
-    if (*cc > 10) *cc = 10;
-    if (*rr < 1) *rr = 1;
-    if (*rr > 8) *rr = 8;
-}
+static void citadel_cell(float px, float py, int *cc, int *rr) { ed_citadel_cell(px, py, cc, rr); }
 
 static void mouse_down(float px, float py) {
     if (py < VY) {
@@ -973,7 +761,7 @@ void editor_draw(void) {
         int c, r;
         if (cell_of(px, py, &c, &r)) {
             int ok = tool == T_PATH || tool == T_ERASE || can_place(c, r) ||
-                     (tool == T_PELLET && is_sp(lv(), c, r));
+                     (tool == T_PELLET && ed_is_super_pellet(lv(), c, r));
             draw_cell_box(c, r, ok ? 1 : 1, ok ? 1 : 0.2f, ok ? 1 : 0.2f);
         }
     }
