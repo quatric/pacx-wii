@@ -373,6 +373,8 @@ static void build_level(int players) {
         /* "PRESS RETURN" in the original; the join button on the Wii is A */
 #ifdef PACX_MAC
         static const char text[] = "PRESS RETURN";
+#elif defined(PACX_3DS)
+        static const char text[] = "PRESS L";
 #else
         static const char text[] = "PRESS A";
 #endif

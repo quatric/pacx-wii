@@ -15,7 +15,7 @@ typedef struct {
     u16 pad2;
 } __attribute__((packed)) PackEntry;
 
-#ifdef PACX_MAC
+#ifdef PACX_PACKFILE
 int pack_open(const char *path);
 #endif
 void pack_init(void);

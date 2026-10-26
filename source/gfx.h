@@ -1,7 +1,7 @@
 #ifndef GFX_H
 #define GFX_H
 #include "platform.h"
-#ifndef PACX_MAC
+#ifndef PACX_NOGX
 #include <gccore.h>
 #endif
 
@@ -10,8 +10,8 @@
 #define VIEW_H 480
 
 typedef struct Tex {
-#ifdef PACX_MAC
-    void *obj;      /* the Metal texture (retained) */
+#ifdef PACX_NOGX
+    void *obj;      /* the Metal texture (retained), or the port's texture */
 #else
     GXTexObj obj;
 #endif
@@ -33,7 +33,7 @@ Tex *gfx_tex_rgba(const u8 *rgba, int w, int h);   /* a texture from linear RGBA
 void gfx_tex_free(Tex *t);
 
 void gfx_restore_state(void);      /* our GX state again, after another library drew */
-#ifndef PACX_MAC
+#ifndef PACX_NOGX
 GXRModeObj *gfx_rmode(void);
 #endif
 

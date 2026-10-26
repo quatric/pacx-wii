@@ -14,3 +14,17 @@ __pycache__/
 /apps/pacx/boot.dol
 /mac/data/
 /build-mac/
+
+# the Wii U, Switch and 3DS ports
+/ports/data/
+/build-wiiu/
+/build-switch/
+/build-3ds/
+/build-sdl/
+/pacx-wiiu.*
+/pacx-switch.nro
+/pacx-3ds.3dsx
+*.rpx
+*.wuhb
+*.nro
+*.3dsx

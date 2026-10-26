@@ -1,8 +1,9 @@
-# Pac the Man X for the Wii and the Mac
+# Pac the Man X for the Wii, Wii U, Switch, 3DS and Mac
 
 A port of **Pac the Man X 1.5.1a**, the freeware Mac maze game by McSebi Software, to the
-Nintendo Wii (Homebrew Channel), together with its level editor, and from there back to
-today's Macs (Apple silicon and Intel, macOS 11 or newer) with a native level editor.
+Nintendo Wii (Homebrew Channel), together with its level editor, and from there to the Wii U,
+the Switch, the 3DS and back to today's Macs (Apple silicon and Intel, macOS 11 or newer) with
+a native level editor.
 
 The game logic is rebuilt from the original program, so it plays the same as the original:
 the same mazes, speeds, timers, scores, bonus items, demo mode, high score tables and
@@ -141,6 +142,57 @@ The level files are the same `.plist` files as those of the Mac and Wii editors.
 walks through the screens like the Wii test build, saves PNG pictures of them in the folder
 and quits.
 
+## Wii U, Switch and 3DS
+
+These share the game code with the Wii and the Mac (`source/`); `ports/` holds what is their
+own: `ports/sdl` (screen, controllers and sound on SDL2, for the Switch and Wii U),
+`ports/ctr` (citro2d, ndsp and the touch screen of the 3DS) and `ports/common` (a software
+mixer that plays the sound effects and the .ogg music, with
+[stb_vorbis](https://github.com/nothings/stb) by Sean Barrett, public domain). They play the
+same game, with the same menus, preferences and level editor, and the same level files.
+
+### Building
+
+Install devkitPro with the toolchains and libraries of the system you build for (`wut` and the
+`wiiu-sdl2` package for the Wii U, `libnx` and `switch-sdl2` for the Switch, `libctru` and
+`citro2d` for the 3DS), Python 3 with Pillow and ffmpeg, then:
+
+```bash
+python3 -I tools/convert_assets.py --console "/path/to/Pac the Man X.app/Contents/Resources"
+make -C ports/wiiu       # pacx-wiiu.wuhb (and pacx-wiiu.rpx)
+make -C ports/switch     # pacx-switch.nro
+make -C ports/ctr        # pacx-3ds.3dsx
+```
+
+`scripts/build-all.sh "<Resources folder>"` converts the data and builds every system,
+the Wii and the Mac included.
+
+### Installing
+
+- **Switch**: copy `pacx-switch.nro` to `sd:/switch/`. The pack and the music are inside it;
+  the settings, high scores and level files are kept in `sd:/switch/pacx`.
+- **3DS**: copy `pacx-3ds.3dsx` to `sd:/3ds/`. The pack and the music are inside it; the
+  settings, high scores and level files are kept in `sd:/3ds/pacx`. The music needs the DSP
+  firmware dumped from the console, as with any homebrew; without it the game is silent.
+- **Wii U**: copy `pacx-wiiu.wuhb` to `sd:/wiiu/apps/` (Aroma), and `ports/data/pack.bin` and
+  `ports/data/music` to `sd:/wiiu/apps/pacx/`, where the settings, scores and levels go too.
+
+### Controls
+
+| | Switch and Wii U | 3DS |
+|---|---|---|
+| Player 1 | first controller: D-pad or left stick | D-pad or Circle Pad |
+| Player 2 | second controller | the face buttons (X up, B down, Y left, A right), or the C-Stick |
+| Join a game | A or B on that controller | L or R |
+| Pause | + | START |
+| Back to the title | − | SELECT |
+| Menus | A select, B back, X preferences on the title | A, B, X |
+| Pointer (menus and level editor) | touch screen or a mouse | touch screen |
+| Level editor | Y try, L or R save, hold B or ZL/ZR to bypass the checks, + menu, − undo | Y try, L or R save, hold B or ZL/ZR (New 3DS) to bypass the checks, START menu, SELECT undo |
+
+On the 3DS the maze is drawn at half size on both screens: the bottom screen is the touch
+area, with the same picture. Names after a high score are typed on a keyboard on the screen.
+
 ## Testing in Dolphin
 
 `make PACX_TEST=1 NO_DOLXZ=1` builds a version that walks through every screen by itself,
@@ -154,6 +206,8 @@ Dolphin and collects the pictures.
 - [libwiiosk](https://github.com/quatric/libwiiosk) and
   [libinput-wii](https://github.com/quatric/libinput-wii) for the keyboard and input.
 - dolxz by FIX94.
+- [stb_vorbis](https://github.com/nothings/stb) by Sean Barrett, for the music of the Wii U,
+  Switch and 3DS versions.
 
 Pac the Man X is freeware by McSebi Software. This port is not affiliated with McSebi
 Software or with Bandai Namco.

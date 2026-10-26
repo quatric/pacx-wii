@@ -1,7 +1,10 @@
-#ifndef PACX_MAC
+#if !defined(PACX_MAC) && !defined(PACX_PORT)
 #include <gccore.h>
 #include <fat.h>
 #include <ogc/conf.h>
+#endif
+#ifdef PACX_PORT
+#include "port.h"
 #endif
 #include <dirent.h>
 #include <stdio.h>
@@ -14,7 +17,7 @@
 #include "gfx.h"
 
 Settings cfg;
-#ifdef PACX_MAC
+#if defined(PACX_MAC) || defined(PACX_PORT)
 char appDir[256];
 #else
 char appDir[256] = "sd:/apps/pacx";
@@ -60,6 +63,9 @@ void storage_init(const char *argv0) {
         *s = '/';
     }
     storageOk = 1;
+#elif defined(PACX_PORT)
+    (void)argv0;
+    storageOk = port_storage_dir(appDir, sizeof appDir);
 #else
     storageOk = fatInitDefault();
     if (argv0 && strchr(argv0, ':')) {
@@ -298,6 +304,8 @@ static void load_lang(const char *lang) {
 void strings_init(void) {
 #ifdef PACX_MAC
     const char *lang = platform_language();
+#elif defined(PACX_PORT)
+    const char *lang = port_language();
 #else
     int l = CONF_GetLanguage();
     const char *lang = "en";

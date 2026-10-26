@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef PACX_PORT
 #include <wiiuse/wpad.h>
 #include <input_wii.h>
 #include <wiiosk.h>
 #include <wiiosk_input_wii.h>
+#endif
 #include "ui.h"
 #include "uimenu.h"
 #include "gfx.h"
@@ -93,7 +95,12 @@ typedef struct {
     char title[96], text[256];
     void (*yes)(void);
     int sel;
+#ifdef PACX_PORT
+    char buf[32];
+    int maxc, kx, ky;
+#else
     osk_keyboard *osk;
+#endif
     void (*done)(const char *text);
 } Screen;
 
@@ -108,10 +115,14 @@ int ui_active(void) { return depth > 0; }
 void ui_close_all(void) {
     while (depth > 0) {
         Screen *s = &stack[depth - 1];
+#ifndef PACX_PORT
         if (s->type == S_OSK && s->osk) {
             OSK_Destroy(s->osk);
             INPUT_SetScreenSize(VIEW_W, VIEW_H);
         }
+#else
+        (void)s;
+#endif
         depth--;
     }
 }
@@ -161,6 +172,12 @@ void ui_text_entry(const char *title, const char *initial, int maxChars, void (*
     snprintf(s->title, sizeof s->title, "%s", title ? title : "");
     snprintf(s->text, sizeof s->text, "%s", title ? title : "");
     s->done = done;
+#ifdef PACX_PORT
+    snprintf(s->buf, sizeof s->buf, "%s", initial ? initial : "");
+    s->maxc = maxChars > 31 ? 31 : maxChars;
+    if ((int)strlen(s->buf) > s->maxc) s->buf[s->maxc] = 0;
+    return;
+#else
     osk_config c;
     OSK_DefaultConfig(&c);
     OSK_UseSystemLanguage(&c);
@@ -176,6 +193,7 @@ void ui_text_entry(const char *title, const char *initial, int maxChars, void (*
     s->osk = OSK_Create(&c);
     if (!s->osk) { pop(); if (done) done(NULL); return; }
     INPUT_SetScreenSize(rm->fbWidth, rm->efbHeight);
+#endif
 }
 
 /* ================================================================== text wrapping */
@@ -372,6 +390,115 @@ static void dialog_draw(const Screen *s) {
     }
 }
 
+#ifdef PACX_PORT
+/* a keyboard of our own, steered with the D-pad or the pointer: 4 rows of 10 keys, then
+   space, delete, cancel and OK (the game's font has capitals only) */
+static const char *kbRows[4] = {"ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZ0123", "456789-_.!"};
+enum { KB_X = 50, KB_Y = 140, KB_W = 540, KB_KEYS_Y = 240, KB_KEY_W = 50, KB_KEY_H = 36 };
+
+static int kb_cols(int row) { return row < 4 ? 10 : 4; }
+
+static void kb_key_rect(int kx, int ky, float *x, float *y, float *w) {
+    if (ky < 4) { *x = KB_X + 20 + kx * KB_KEY_W; *w = KB_KEY_W; }
+    else { *x = KB_X + 20 + kx * 125; *w = 125; }
+    *y = ky < 4 ? KB_KEYS_Y + ky * KB_KEY_H : KB_KEYS_Y + 4 * KB_KEY_H + 12;
+}
+
+static int kb_hit(float px, float py, int *kx, int *ky) {
+    for (int r = 0; r < 5; r++)
+        for (int c = 0; c < kb_cols(r); c++) {
+            float x, y, w;
+            kb_key_rect(c, r, &x, &y, &w);
+            if (px >= x && px < x + w && py >= y && py < y + KB_KEY_H) { *kx = c; *ky = r; return 1; }
+        }
+    return 0;
+}
+
+static void kb_finish(Screen *s, int ok) {
+    char text[32];
+    strncpy(text, s->buf, sizeof text - 1);
+    text[sizeof text - 1] = 0;
+    void (*done)(const char *) = s->done;
+    pop();
+    if (done) done(ok ? text : NULL);
+}
+
+static void kb_press(Screen *s, int kx, int ky) {
+    int len = (int)strlen(s->buf);
+    if (ky < 4) {
+        if (len < s->maxc) { s->buf[len] = kbRows[ky][kx]; s->buf[len + 1] = 0; }
+        return;
+    }
+    switch (kx) {
+    case 0: if (len < s->maxc) { s->buf[len] = ' '; s->buf[len + 1] = 0; } break;
+    case 1: if (len) s->buf[len - 1] = 0; break;
+    case 2: kb_finish(s, 0); break;
+    case 3: if (len) kb_finish(s, 1); break;
+    }
+}
+
+static void osk_update(Screen *s) {
+    u32 rep = in_menu_repeat(), pr = in_menu_pressed();
+    float px, py;
+    int hx, hy;
+    if (in_pointer(&px, &py) && kb_hit(px, py, &hx, &hy)) {
+        static float lx, ly;
+        if (px != lx || py != ly) { s->kx = hx; s->ky = hy; }
+        lx = px;
+        ly = py;
+        if (in_click()) { s->kx = hx; s->ky = hy; kb_press(s, hx, hy); return; }
+    }
+    if (rep & MB_LEFT) s->kx = (s->kx + kb_cols(s->ky) - 1) % kb_cols(s->ky);
+    if (rep & MB_RIGHT) s->kx = (s->kx + 1) % kb_cols(s->ky);
+    if (rep & MB_UP) {
+        if (s->ky == 4) s->kx = s->kx * 10 / 4;
+        s->ky = (s->ky + 4) % 5;
+        if (s->ky == 4) s->kx = s->kx * 4 / 10;
+    }
+    if (rep & MB_DOWN) {
+        if (s->ky == 4) s->kx = s->kx * 10 / 4;
+        s->ky = (s->ky + 1) % 5;
+        if (s->ky == 4) s->kx = s->kx * 4 / 10;
+    }
+    if (s->kx >= kb_cols(s->ky)) s->kx = kb_cols(s->ky) - 1;
+    if (pr & MB_OK) kb_press(s, s->kx, s->ky);
+    else if (pr & MB_BACK) { int len = (int)strlen(s->buf); if (len) s->buf[len - 1] = 0; }
+    else if (pr & MB_PLUS) { if (s->buf[0]) kb_finish(s, 1); }
+    else if (pr & (MB_MINUS | MB_HOME)) kb_finish(s, 0);
+    char ch;
+    while (in_text(&ch)) {
+        int len = (int)strlen(s->buf);
+        if (ch == '\n') { if (len) { kb_finish(s, 1); return; } }
+        else if (ch == 27) { kb_finish(s, 0); return; }
+        else if (ch == '\b') { if (len) s->buf[len - 1] = 0; }
+        else if (len < s->maxc) { s->buf[len] = ch; s->buf[len + 1] = 0; }
+    }
+}
+
+static void osk_draw(Screen *s) {
+    ui_panel(KB_X, KB_Y - 70, KB_W, 375);
+    char lines[3][80];
+    int n = wrap(s->text, lines, 3, 62);
+    for (int i = 0; i < n; i++) ui_text_center(KB_Y - 62 + i * 16, lines[i], 0, 1, 1);
+    char shown[40];
+    snprintf(shown, sizeof shown, "%s_", s->buf);
+    gfx_rect(KB_X + 20, KB_Y - 8, KB_W - 40, 28, 0, 0, 0, 0.6f);
+    ui_text(KB_X + 28, KB_Y - 2, shown, 2, 0, 1);
+    static const char *special[4] = {"Space", "Delete", "Cancel", "OK"};
+    for (int r = 0; r < 5; r++)
+        for (int c = 0; c < kb_cols(r); c++) {
+            float x, y, w;
+            kb_key_rect(c, r, &x, &y, &w);
+            int sel = (r == s->ky && c == s->kx);
+            gfx_rect(x + 2, y + 2, w - 4, KB_KEY_H - 4, sel ? 0.35f : 0.1f, sel ? 0.45f : 0.12f, sel ? 1.0f : 0.3f, 0.9f);
+            char k[2] = {0, 0};
+            const char *t;
+            if (r < 4) { k[0] = kbRows[r][c]; t = k; }
+            else t = special[c];
+            ui_text(x + (w - ui_text_width(t, 0)) / 2, y + 10, t, sel ? 0 : 3, 0, 1);
+        }
+}
+#else
 /* ================================================================== the Wii keyboard */
 
 static void osk_update(Screen *s) {
@@ -401,6 +528,8 @@ static void osk_draw(Screen *s) {
         for (int i = 0; i < n; i++) ui_text_center(6 + i * 16, lines[i], 0, 1, 1);
     }
 }
+
+#endif
 
 /* ================================================================== high score names */
 
@@ -593,7 +722,9 @@ void ui_open_prefs(void) {
 /* ================================================================== frame */
 
 void ui_init(void) {
+#ifndef PACX_PORT
     OSK_InitSound(false);
+#endif
 }
 
 void ui_update(void) {

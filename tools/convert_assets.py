@@ -12,6 +12,7 @@ writes, for the Wii
   apps/pacx/levels/        the extra level set, editable with the built-in editor
 
 and with --mac, for the Mac build (mac/Makefile)
+  ports/data/              with --console, for Wii U, Switch and 3DS: the Mac's pack and .ogg music
   mac/data/pack.bin        the same pack, little-endian, with untiled RGBA pictures
   mac/data/music/          the soundtrack (the ending converted to .m4a)
   mac/data/levels/         the extra level set
@@ -179,7 +180,8 @@ def app_icon(res):
 def main():
     args = sys.argv[1:]
     mac = "--mac" in args
-    args = [a for a in args if a != "--mac"]
+    console = "--console" in args       # Wii U, Switch and 3DS: the Mac's pack and .ogg music
+    args = [a for a in args if a not in ("--mac", "--console")]
     if len(args) < 1:
         print(__doc__)
         sys.exit(2)
@@ -189,7 +191,7 @@ def main():
         sys.exit(f"no Sprites folder in {res}")
     editor = os.path.join(res, "Pac the Man X Editor.app", "Contents", "Resources")
 
-    pack = Pack(mac)
+    pack = Pack(mac or console)
 
     opaque = {"title", "ending", "highscore_title"}
     from_game = ["arrow", "pellet", "barrier", "game_over", "heart", "ready", "pause", "spot",
@@ -250,6 +252,9 @@ def main():
     if mac:
         mac_files(res, editor, xlev, pack)
         return
+    if console:
+        console_files(res, xlev, pack)
+        return
 
     os.makedirs(os.path.join(ROOT, "data"), exist_ok=True)
     out = os.path.join(ROOT, "data", "pack.bin")
@@ -273,6 +278,38 @@ def main():
         if ext.lower() not in (".mp3", ".mov", ".m4a"):
             continue
         dst = os.path.join(app, "music", base + ".ogg")
+        if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(os.path.join(mdir, f)):
+            continue
+        subprocess.run([ffmpeg, "-loglevel", "error", "-y", "-i", os.path.join(mdir, f), "-vn",
+                        "-ac", "2", "-ar", "32000", "-c:a", "libvorbis", "-q:a", "3", dst], check=True)
+        print("music", base)
+
+
+def console_files(res, xlev, pack):
+    out = os.path.join(ROOT, "ports", "data")
+    for d in ("", "music", "levels"):
+        os.makedirs(os.path.join(out, d), exist_ok=True)
+    pack.write(os.path.join(out, "pack.bin"))
+    print("wrote", os.path.join(out, "pack.bin"), os.path.getsize(os.path.join(out, "pack.bin")), "bytes")
+    if os.path.exists(xlev):
+        shutil.copyfile(xlev, os.path.join(out, "levels", "The X Levels.plist"))
+    icon = app_icon(res)
+    icon.save(os.path.join(out, "icon.png"))
+    for name, size in (("icon.jpg", 256), ("icon-wiiu.png", 128), ("icon-3ds.png", 48)):
+        sq = Image.new("RGB", (size, size), (0, 0, 0))
+        logo = icon.convert("RGB").resize((size, size * 48 // 128), Image.LANCZOS)
+        sq.paste(logo, (0, (size - logo.height) // 2))
+        sq.save(os.path.join(out, name), quality=95)
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        print("ffmpeg not found: no music written")
+        return
+    mdir = os.path.join(res, "Music")
+    for f in sorted(os.listdir(mdir)):
+        base, ext = os.path.splitext(f)
+        if ext.lower() not in (".mp3", ".mov", ".m4a"):
+            continue
+        dst = os.path.join(out, "music", base + ".ogg")
         if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(os.path.join(mdir, f)):
             continue
         subprocess.run([ffmpeg, "-loglevel", "error", "-y", "-i", os.path.join(mdir, f), "-vn",

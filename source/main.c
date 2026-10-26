@@ -7,9 +7,17 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <time.h>
+#ifdef PACX_PORT
+#include "port.h"
+#ifdef PACX_SDL
+#include <SDL2/SDL.h>      /* main becomes SDL_main */
+#endif
+#else
 #include <gccore.h>
 #include <ogc/lwp_watchdog.h>
 #include <wiiuse/wpad.h>
+#endif
 #include "gfx.h"
 #include "pack.h"
 #include "engine.h"
@@ -27,11 +35,16 @@
 #define TRACE(...) do { } while (0)
 #endif
 
+#ifdef PACX_PORT
+#define resetPressed 0
+#define powerPressed port_quit_requested()
+#else
 static volatile int resetPressed, powerPressed;
 
 static void on_reset(u32 irq, void *ctx) { resetPressed = 1; }
 static void on_power(void) { powerPressed = 1; }
 static void on_wpad_power(s32 chan) { powerPressed = 1; }
+#endif
 
 /* the title buttons with the D-pad: -1 until it is used */
 static int splashSel = -1;
@@ -176,8 +189,18 @@ static int test_script(int frame) {
 #endif
 
 int main(int argc, char **argv) {
+#ifdef PACX_PORT
+    port_init();
+#endif
     gfx_init();
     TRACE("pacx: %s done\n", "gfx_init");
+#ifdef PACX_PORT
+    {
+        char packPath[300];
+        snprintf(packPath, sizeof packPath, "%s/pack.bin", port_data_dir());
+        if (!pack_open(packPath)) port_fatal("pack.bin is missing: see the README");
+    }
+#endif
     pack_init();
     TRACE("pacx: %s done\n", "pack_init");
     in_init();
@@ -193,7 +216,11 @@ int main(int argc, char **argv) {
     gfx_set_aspect(cfg.aspect);
     TRACE("pacx: %s done\n", "gfx_set_aspect");
     char music[300];
+#ifdef PACX_PORT
+    snprintf(music, sizeof music, "%s/music", port_data_dir());
+#else
     snprintf(music, sizeof music, "%s/music", appDir);
+#endif
     audio_init(music);
     TRACE("pacx: %s done\n", "audio_init");
     eng_init();
@@ -203,11 +230,15 @@ int main(int argc, char **argv) {
     ui_init();
     TRACE("pacx: %s done\n", "ui_init");
 
+#ifndef PACX_PORT
     SYS_SetResetCallback(on_reset);
     SYS_SetPowerCallback(on_power);
     WPAD_SetPowerButtonCallback(on_wpad_power);
 
     rnd_seed((u32)gettime());
+#else
+    rnd_seed((u32)time(NULL));
+#endif
     game_show_splash();
 
     int pal = gfx_is_pal50(), palPhase = 0;
@@ -253,7 +284,11 @@ int main(int argc, char **argv) {
 #ifdef PACX_TEST
         if (test_script(++frame)) {
             settings_save();
+#ifdef PACX_PORT
+            break;
+#else
             SYS_ResetSystem(SYS_POWEROFF, 0, 0);
+#endif
         }
 #else
         (void)frame;
@@ -263,6 +298,10 @@ int main(int argc, char **argv) {
     settings_save();
     mus_stop();
     snd_stop_all();
+#ifdef PACX_PORT
+    port_shutdown();
+#else
     if (powerPressed) SYS_ResetSystem(SYS_POWEROFF, 0, 0);
+#endif
     return 0;
 }
