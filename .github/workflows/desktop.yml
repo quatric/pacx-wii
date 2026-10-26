@@ -1,0 +1,43 @@
+name: Linux and Windows
+
+on:
+  push:
+    paths: ['source/**', 'ports/**', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['source/**', 'ports/**', '.github/workflows/desktop.yml']
+
+# The game's own data is not in this repository, so these jobs build the program only.
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - run: make -C ports/sdl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pacx-linux
+          path: build-sdl/pacx-sdl
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: make mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2
+      - run: make -C ports/sdl
+      - name: Collect the program and its DLLs
+        run: |
+          mkdir out
+          cp build-sdl/pacx-sdl.exe out/
+          ldd out/pacx-sdl.exe | awk '/mingw64/ {print $3}' | xargs -I{} cp {} out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pacx-windows
+          path: out

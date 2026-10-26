@@ -31,7 +31,24 @@ static char dataDir[256], saveDir[256];
 
 int port_quit_requested(void) { return quitRequested; }
 const char *port_data_dir(void) { return dataDir; }
+
+#ifdef PACX_DESKTOP
+const char *port_language(void) {
+    const char *r = "en";
+    SDL_Locale *l = SDL_GetPreferredLocales();
+    for (SDL_Locale *p = l; p && p->language; p++) {
+        if (!strcmp(p->language, "de")) r = "de";
+        else if (!strcmp(p->language, "fr")) r = "fr";
+        else if (strcmp(p->language, "en")) continue;
+        else r = "en";
+        break;
+    }
+    SDL_free(l);
+    return r;
+}
+#else
 const char *port_language(void) { return "en"; }
+#endif
 
 static void make_dirs(char *path) {
     for (char *s = strchr(path, ':') ? strchr(path, ':') + 2 : path + 1; *s; s++)
@@ -61,6 +78,49 @@ void port_shutdown(void) {
 #endif
 }
 
+#ifdef PACX_DESKTOP
+static int has_pack(const char *dir) {
+    char p[600];
+    snprintf(p, sizeof p, "%s/pack.bin", dir);
+    FILE *f = fopen(p, "rb");
+    if (f) fclose(f);
+    return f != NULL;
+}
+
+static void slashes(char *s) {
+    for (; *s; s++)
+        if (*s == '\\') *s = '/';
+}
+
+/* the data (pack.bin, music/, levels/) is found in PACX_DATA, in data/ next to the program, in
+   ../share/pacx or in ./data; the settings, scores and level files go in the user's folder of
+   SDL (~/.local/share/quatric/Pac the Man X, %APPDATA%\quatric\Pac the Man X, PACX_HOME) */
+static void desktop_dirs(void) {
+    char *base = SDL_GetBasePath();
+    char c1[300] = "", c2[300] = "";
+    if (base) {
+        snprintf(c1, sizeof c1, "%sdata", base);
+        snprintf(c2, sizeof c2, "%s../share/pacx", base);
+    }
+    const char *env = getenv("PACX_DATA");
+    const char *cands[] = {env, c1, c2, "data", "ports/data", "."};
+    snprintf(dataDir, sizeof dataDir, "%s", ".");
+    for (int i = 0; i < 6; i++)
+        if (cands[i] && *cands[i] && has_pack(cands[i])) {
+            snprintf(dataDir, sizeof dataDir, "%s", cands[i]);
+            break;
+        }
+    SDL_free(base);
+    const char *home = getenv("PACX_HOME");
+    char *pref = home && *home ? SDL_strdup(home) : SDL_GetPrefPath("quatric", "Pac the Man X");
+    snprintf(saveDir, sizeof saveDir, "%s", pref ? pref : dataDir);
+    SDL_free(pref);
+    slashes(dataDir);
+    slashes(saveDir);
+    for (size_t n = strlen(saveDir); n > 1 && saveDir[n - 1] == '/'; ) saveDir[--n] = 0;
+}
+#endif
+
 void port_init(void) {
 #if defined(__SWITCH__)
     romfsInit();
@@ -71,8 +131,7 @@ void port_init(void) {
     snprintf(saveDir, sizeof saveDir, "%s/wiiu/apps/pacx", sd ? sd : "fs:/vol/external01");
     snprintf(dataDir, sizeof dataDir, "%s", saveDir);
 #else
-    snprintf(dataDir, sizeof dataDir, "%s", getenv("PACX_DATA") ? getenv("PACX_DATA") : ".");
-    snprintf(saveDir, sizeof saveDir, "%s", dataDir);
+    desktop_dirs();
 #endif
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -126,7 +185,11 @@ static SDL_Texture *make_texture(const u8 *rgba, int w, int h) {
 }
 
 void gfx_init(void) {
+#ifdef PACX_DESKTOP
+    window = SDL_CreateWindow("Pac the Man X", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 960, 720,
+#else
     window = SDL_CreateWindow("Pac the Man X", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720,
+#endif
 #if defined(__SWITCH__) || defined(__WIIU__)
                               SDL_WINDOW_FULLSCREEN
 #else
@@ -134,7 +197,15 @@ void gfx_init(void) {
 #endif
                               );
     if (!window) exit(1);
+#ifdef PACX_DESKTOP
+    /* the game runs at 60 steps a second: vsync only on a display of about 60 Hz, else the
+       frames are paced here (gfx_end) */
+    SDL_DisplayMode dm;
+    int vsync = SDL_GetWindowDisplayMode(window, &dm) == 0 && dm.refresh_rate >= 57 && dm.refresh_rate <= 63;
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | (vsync ? SDL_RENDERER_PRESENTVSYNC : 0));
+#else
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+#endif
     if (!renderer) renderer = SDL_CreateRenderer(window, -1, 0);
     if (!renderer) exit(1);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
@@ -180,7 +251,39 @@ void gfx_begin(void) {
     SDL_RenderClear(renderer);
 }
 
+#ifdef PACX_DESKTOP
+/* never faster than 60 frames a second, whatever the display does */
+static void pace(void) {
+    static Uint64 next;
+    Uint64 freq = SDL_GetPerformanceFrequency(), now = SDL_GetPerformanceCounter(), step = freq / 60;
+    if (!next || now > next + step * 4) next = now;
+    while (now < next) {
+        Uint64 ms = (next - now) * 1000 / freq;
+        if (ms > 1) SDL_Delay((Uint32)(ms - 1));
+        now = SDL_GetPerformanceCounter();
+    }
+    next += step;
+}
+#endif
+
 void gfx_end(void) {
+#ifdef PACX_DESKTOP
+    char *shots = getenv("PACX_SHOTS");      /* every 60th frame as a BMP into that folder, for testing */
+    static int frameNo;
+    if (shots && ++frameNo % 60 == 0) {
+        int w, h;
+        SDL_GetRendererOutputSize(renderer, &w, &h);
+        SDL_Surface *sf = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+        if (sf) {
+            char path[600];
+            snprintf(path, sizeof path, "%s/frame%04d.bmp", shots, frameNo);
+            if (SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_ARGB8888, sf->pixels, sf->pitch) == 0)
+                SDL_SaveBMP(sf, path);
+            SDL_FreeSurface(sf);
+        }
+    }
+    pace();
+#endif
     SDL_RenderPresent(renderer);
 }
 
@@ -392,6 +495,12 @@ static void pump_events(void) {
                 if (*p >= 32 && *p < 127) text_push(*p);
             break;
         case SDL_KEYDOWN:
+#ifdef PACX_DESKTOP
+            if (!e.key.repeat && (e.key.keysym.sym == SDLK_F11 ||
+                                  (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT))))
+                SDL_SetWindowFullscreen(window, (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP)
+                                                    ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+#endif
             if (e.key.keysym.sym == SDLK_BACKSPACE) text_push('\b');
             else if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER) text_push('\n');
             else if (e.key.keysym.sym == SDLK_ESCAPE) text_push(27);
@@ -443,6 +552,21 @@ void in_update(void) {
 
     u32 m = 0;
     for (int i = 0; i < MAX_PADS; i++) m |= pad_menu(pads[i]);
+#ifdef PACX_DESKTOP
+    /* the keyboard in the menus: arrows, Return and Esc; Tab or F1 stand for HOME (the preferences,
+       the editor's menu) and = - 1 2 for the Wii's + - 1 2 in the editor */
+    if (k[SDL_SCANCODE_UP]) m |= MB_UP;
+    if (k[SDL_SCANCODE_DOWN]) m |= MB_DOWN;
+    if (k[SDL_SCANCODE_LEFT]) m |= MB_LEFT;
+    if (k[SDL_SCANCODE_RIGHT]) m |= MB_RIGHT;
+    if (k[SDL_SCANCODE_RETURN] || k[SDL_SCANCODE_KP_ENTER]) m |= MB_OK;
+    if (k[SDL_SCANCODE_ESCAPE]) m |= MB_BACK;
+    if (k[SDL_SCANCODE_TAB] || k[SDL_SCANCODE_F1]) m |= MB_HOME;
+    if (k[SDL_SCANCODE_EQUALS] || k[SDL_SCANCODE_KP_PLUS]) m |= MB_PLUS;
+    if (k[SDL_SCANCODE_MINUS] || k[SDL_SCANCODE_KP_MINUS]) m |= MB_MINUS;
+    if (k[SDL_SCANCODE_1]) m |= MB_1;
+    if (k[SDL_SCANCODE_2]) m |= MB_2;
+#endif
     if (m) ptrVisible = 0;      /* the controller took over from the touch screen / mouse */
     if (ptrDown) m |= MB_CLICK;
     menuPrev = menuHeld;

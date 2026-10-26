@@ -1,4 +1,4 @@
-# Pac the Man X for the Wii, Wii U, Switch, 3DS and Mac
+# Pac the Man X for the Wii, Wii U, Switch, 3DS, Mac, Linux and Windows
 
 A port of **Pac the Man X 1.5.1a**, the freeware Mac maze game by McSebi Software, to the
 Nintendo Wii (Homebrew Channel), together with its level editor, and from there to the Wii U,
@@ -192,6 +192,11 @@ the Wii and the Mac included.
 
 On the 3DS the maze is drawn at half size on both screens: the bottom screen is the touch
 area, with the same picture. Names after a high score are typed on a keyboard on the screen.
+
+## Linux and Windows
+
+`ports/sdl` builds the game for Linux and Windows on SDL 2, with the keyboard, mouse and game
+controllers. See [ports/sdl/README.md](ports/sdl/README.md).
 
 ## Testing in Dolphin
 

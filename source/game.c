@@ -371,7 +371,7 @@ static void build_level(int players) {
 
     if (game.playerCanJoin) {
         /* "PRESS RETURN" in the original; the join button on the Wii is A */
-#ifdef PACX_MAC
+#if defined(PACX_MAC) || defined(PACX_DESKTOP)
         static const char text[] = "PRESS RETURN";
 #elif defined(PACX_3DS)
         static const char text[] = "PRESS L";
